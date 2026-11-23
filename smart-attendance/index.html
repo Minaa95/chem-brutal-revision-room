@@ -42,14 +42,10 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 
 <section id="register" class="card hide">
   <h2>First-time registration</h2>
-  <p class="muted">Register once using your own matric number and email. After verification, this browser will remember you.</p>
+  <p class="muted">Register once using your own matric number and your own email. No verification code is needed.</p>
   <input id="matric" class="input" placeholder="Matric no. e.g. MS2623..." autocomplete="off">
   <input id="email" class="input" type="email" placeholder="Your own email address" autocomplete="email">
-  <button id="otpBtn" class="btn" onclick="requestOtp()">Send verification code</button>
-  <div id="otpArea" class="hide">
-    <input id="otp" class="input" placeholder="8-character verification code" autocomplete="one-time-code">
-    <button id="verifyBtn" class="btn" onclick="verifyOtp()">Verify & register this device</button>
-  </div>
+  <button id="registerBtn" class="btn" onclick="registerDirect()">Register this device</button>
   <div id="registerMsg"></div>
 </section>
 
@@ -80,7 +76,8 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 
 </main>
 <script>
-const TOKEN_KEY='sakms_device_v10';
+const TOKEN_KEY='sakms_device_v11';
+const OLD_TOKEN_KEY='sakms_device_v10';
 const DEPLOY_KEY='sakms_deployment_v10';
 let profile=null;
 
@@ -89,7 +86,13 @@ function show(id){el(id).classList.remove('hide')}
 function hide(id){el(id).classList.add('hide')}
 function msg(id,text,kind='status'){el(id).innerHTML='<div class="status '+kind+'"></div>';el(id).firstChild.textContent=text}
 function typeLabel(t){return ({LECTURE:'KULIAH',TUTORIAL:'TUTORAN',PRACTICAL:'AMALI'})[String(t||'').toUpperCase()]||t}
-function token(){return localStorage.getItem(TOKEN_KEY)||''}
+function token(){
+  const current=localStorage.getItem(TOKEN_KEY)||'';
+  if(current)return current;
+  const old=localStorage.getItem(OLD_TOKEN_KEY)||'';
+  if(old){localStorage.setItem(TOKEN_KEY,old);return old}
+  return '';
+}
 function deployment(){
   const q=new URLSearchParams(location.search).get('d');
   if(q && /^[A-Za-z0-9_-]+$/.test(q)){localStorage.setItem(DEPLOY_KEY,q);return q}
@@ -104,7 +107,7 @@ function randomId(){
   return Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)
 }
 function deploymentFromUrl(v){
-  const m=String(v||'').trim().match(/\/macros\/s\/([^/]+)\/exec/);
+  const m=String(v||'').trim().match(//macros/s/([^/]+)/exec/);
   return m?m[1]:''
 }
 function makeStudentLink(){
@@ -130,18 +133,18 @@ function externalCall(fn,args,onSuccess,onFailure){
   function poll(){
     if(finished)return;
     tries++;
-    if(tries>80){finished=true;onFailure(new Error('Server response timed out. Please try again.'));return}
+    if(tries>30){finished=true;onFailure(new Error('Server response timed out. Please try again.'));return}
     const cb='sakms_cb_'+requestId.slice(0,16)+'_'+tries;
     const s=document.createElement('script');
     const cleanup=()=>{try{delete window[cb]}catch(e){};s.remove()};
     window[cb]=data=>{
       cleanup();
-      if(!data||!data.ready){setTimeout(poll,300);return}
+      if(!data||!data.ready){setTimeout(poll,700);return}
       finished=true;
       if(data.ok)onSuccess(data.result);
       else onFailure(new Error(data.error||'Server error.'));
     };
-    s.onerror=()=>{cleanup();setTimeout(poll,500)};
+    s.onerror=()=>{cleanup();setTimeout(poll,900)};
     s.src=api+'?api=status&requestId='+encodeURIComponent(requestId)+'&prefix='+encodeURIComponent(cb)+'&_='+Date.now();
     document.head.appendChild(s);
   }
@@ -153,7 +156,7 @@ function externalCall(fn,args,onSuccess,onFailure){
     headers:{'Content-Type':'text/plain;charset=UTF-8'},
     body:body
   }).catch(()=>{});
-  setTimeout(poll,250);
+  setTimeout(poll,800);
 }
 function init(){
   hide('loading');
@@ -166,25 +169,32 @@ function init(){
     else{localStorage.removeItem(TOKEN_KEY);show('register')}
   },e=>{hide('loading');msg('fatalMsg',e.message,'error');show('fatal')});
 }
-function requestOtp(){
+function registerDirect(){
   const matric=el('matric').value.trim().toUpperCase();
   const email=el('email').value.trim().toLowerCase();
-  const b=el('otpBtn');b.disabled=true;b.textContent='Sending…';
-  externalCall('requestStudentOtp',[matric,email],r=>{
-    b.disabled=false;b.textContent='Send verification code';show('otpArea');msg('registerMsg',r.message||'Code sent.','ok')
-  },e=>{b.disabled=false;b.textContent='Send verification code';msg('registerMsg',e.message,'error')});
-}
-function verifyOtp(){
-  const matric=el('matric').value.trim().toUpperCase();
-  const email=el('email').value.trim().toLowerCase();
-  const otp=el('otp').value.trim().toUpperCase();
-  const b=el('verifyBtn');b.disabled=true;b.textContent='Verifying…';
-  externalCall('verifyStudentOtp',[matric,email,otp,navigator.userAgent||''],r=>{
-    b.disabled=false;b.textContent='Verify & register this device';
+  if(!matric||!email){
+    msg('registerMsg','Enter your matric number and your own email.','error');
+    return;
+  }
+  const b=el('registerBtn');
+  b.disabled=true;
+  b.textContent='Registering…';
+
+  externalCall('registerStudentDirectV11',[matric,email,navigator.userAgent||''],r=>{
+    b.disabled=false;
+    b.textContent='Register this device';
     localStorage.setItem(TOKEN_KEY,r.deviceToken);
-    hide('register');renderHome(r.profile,r.sessions||[])
-  },e=>{b.disabled=false;b.textContent='Verify & register this device';msg('registerMsg',e.message,'error')});
+    hide('register');
+    renderHome(r.profile,r.sessions||[]);
+  },e=>{
+    b.disabled=false;
+    b.textContent='Register this device';
+    msg('registerMsg',e.message||String(e),'error');
+  });
 }
+
+function verifyOtp(){ return; }
+
 function renderHome(p,sessions){
   profile=p;hide('register');hide('fatal');hide('receipt');show('home');
   el('studentName').textContent=p.name||'Student';
@@ -230,7 +240,7 @@ function checkIn(session,button){
   {enableHighAccuracy:true,timeout:15000,maximumAge:0})
 }
 function manualRequest(session,button){
-  button.disabled=true;button.textContent='Sending…';
+  button.disabled=true;button.textContent='Registering…';
   externalCall('requestManualAttendance',[session.sessionId,token()],r=>{
     button.disabled=false;button.textContent='Saya di sini, Mdm. Mohon pengesahan';showPending(r.message)
   },e=>{button.disabled=false;button.textContent='Saya di sini, Mdm. Mohon pengesahan';showPending(e.message)})
@@ -257,7 +267,7 @@ function showPending(message){
 function closeReceipt(){hide('receipt');show('home');refreshSessions()}
 function forgetDevice(){
   if(confirm('Register this browser again using another matric/email?')){
-    localStorage.removeItem(TOKEN_KEY);profile=null;hide('home');show('register')
+    localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(OLD_TOKEN_KEY);profile=null;hide('home');show('register')
   }
 }
 init();
