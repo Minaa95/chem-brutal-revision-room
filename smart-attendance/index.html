@@ -132,78 +132,65 @@ function externalCall(fn,args,onSuccess,onFailure){
   if(!api){onFailure(new Error('Student API is not configured.'));return}
 
   const requestId=randomId();
-  const frame=document.createElement('iframe');
-  const frameName='sakms_bridge_'+requestId.slice(0,20);
-  frame.name=frameName;
-  frame.style.display='none';
-  frame.setAttribute('aria-hidden','true');
-  document.body.appendChild(frame);
-
-  const form=document.createElement('form');
-  form.method='POST';
-  form.action=api;
-  form.target=frameName;
-  form.style.display='none';
-
-  const bridge=document.createElement('input');
-  bridge.type='hidden';
-  bridge.name='bridge';
-  bridge.value='v12';
-
-  const payload=document.createElement('input');
-  payload.type='hidden';
-  payload.name='payload';
-  payload.value=JSON.stringify({
-    requestId:requestId,
-    functionName:fn,
-    args:args||[]
-  });
-
-  form.appendChild(bridge);
-  form.appendChild(payload);
-  document.body.appendChild(form);
-
+  const body=JSON.stringify({requestId:requestId,functionName:fn,args:args||[]});
   let finished=false;
+  let tries=0;
+  const started=Date.now();
 
-  function cleanup(){
-    window.removeEventListener('message',receive);
-    try{form.remove()}catch(e){}
-    setTimeout(()=>{try{frame.remove()}catch(e){}},50);
+  function cleanupScript(s,cb){
+    try{delete window[cb]}catch(e){}
+    try{s.remove()}catch(e){}
   }
 
-  function receive(event){
+  function poll(){
     if(finished)return;
-    if(event.source!==frame.contentWindow)return;
-    const data=event.data;
-    if(!data||data.bridge!=='SAKMS_V12'||data.requestId!==requestId)return;
 
-    finished=true;
-    clearTimeout(timer);
-    cleanup();
+    if(Date.now()-started>30000){
+      finished=true;
+      onFailure(new Error('Server response timed out. Tekan cuba semula.'));
+      return;
+    }
 
-    if(data.ok)onSuccess(data.result);
-    else onFailure(new Error(data.error||'Server error.'));
+    tries++;
+    const cb='sakms_cb_'+requestId.slice(0,14)+'_'+tries;
+    const s=document.createElement('script');
+
+    window[cb]=data=>{
+      cleanupScript(s,cb);
+
+      if(!data||!data.ready){
+        setTimeout(poll,1200+Math.floor(Math.random()*500));
+        return;
+      }
+
+      finished=true;
+      if(data.ok)onSuccess(data.result);
+      else onFailure(new Error(data.error||'Server error.'));
+    };
+
+    s.onerror=()=>{
+      cleanupScript(s,cb);
+      setTimeout(poll,1600+Math.floor(Math.random()*500));
+    };
+
+    s.src=api+'?api=status&requestId='+encodeURIComponent(requestId)+
+      '&prefix='+encodeURIComponent(cb)+'&_='+Date.now();
+
+    document.head.appendChild(s);
   }
 
-  window.addEventListener('message',receive);
+  fetch(api,{
+    method:'POST',
+    mode:'no-cors',
+    cache:'no-store',
+    headers:{'Content-Type':'text/plain;charset=UTF-8'},
+    body:body
+  }).catch(()=>{});
 
-  const timer=setTimeout(()=>{
-    if(finished)return;
-    finished=true;
-    cleanup();
-    onFailure(new Error('Server response timed out. Tekan cuba semula.'));
-  },25000);
-
-  try{
-    form.submit();
-  }catch(e){
-    clearTimeout(timer);
-    finished=true;
-    cleanup();
-    onFailure(e);
-  }
+  // In-app browsers are much more reliable with the proven POST + JSONP status path.
+  // Poll slowly to avoid flooding Apps Script when an entire class checks in together.
+  setTimeout(poll,1400+Math.floor(Math.random()*500));
 }
-
 function init(){
   hide('loading');
   if(!deployment()){show('setup');return}
