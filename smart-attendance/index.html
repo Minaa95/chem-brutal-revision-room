@@ -76,8 +76,9 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 
 </main>
 <script>
-const TOKEN_KEY='sakms_device_v11';
-const OLD_TOKEN_KEY='sakms_device_v10';
+const TOKEN_KEY='sakms_device_v12';
+const OLD_TOKEN_KEY='sakms_device_v11';
+const OLDEST_TOKEN_KEY='sakms_device_v10';
 const DEPLOY_KEY='sakms_deployment_v10';
 let profile=null;
 
@@ -91,8 +92,11 @@ function token(){
   if(current)return current;
   const old=localStorage.getItem(OLD_TOKEN_KEY)||'';
   if(old){localStorage.setItem(TOKEN_KEY,old);return old}
+  const oldest=localStorage.getItem(OLDEST_TOKEN_KEY)||'';
+  if(oldest){localStorage.setItem(TOKEN_KEY,oldest);return oldest}
   return '';
 }
+
 function deployment(){
   const q=new URLSearchParams(location.search).get('d');
   if(q && /^[A-Za-z0-9_-]+$/.test(q)){localStorage.setItem(DEPLOY_KEY,q);return q}
@@ -107,7 +111,7 @@ function randomId(){
   return Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)
 }
 function deploymentFromUrl(v){
-  const m=String(v||'').trim().match(//macros/s/([^/]+)/exec/);
+  const m=String(v||'').trim().match(/\/macros\/s\/([^/]+)\/exec/);
   return m?m[1]:''
 }
 function makeStudentLink(){
@@ -126,38 +130,80 @@ function makeStudentLink(){
 function externalCall(fn,args,onSuccess,onFailure){
   const api=apiUrl();
   if(!api){onFailure(new Error('Student API is not configured.'));return}
-  const requestId=randomId();
-  const body=JSON.stringify({requestId:requestId,functionName:fn,args:args||[]});
-  let finished=false,tries=0;
 
-  function poll(){
-    if(finished)return;
-    tries++;
-    if(tries>30){finished=true;onFailure(new Error('Server response timed out. Please try again.'));return}
-    const cb='sakms_cb_'+requestId.slice(0,16)+'_'+tries;
-    const s=document.createElement('script');
-    const cleanup=()=>{try{delete window[cb]}catch(e){};s.remove()};
-    window[cb]=data=>{
-      cleanup();
-      if(!data||!data.ready){setTimeout(poll,700);return}
-      finished=true;
-      if(data.ok)onSuccess(data.result);
-      else onFailure(new Error(data.error||'Server error.'));
-    };
-    s.onerror=()=>{cleanup();setTimeout(poll,900)};
-    s.src=api+'?api=status&requestId='+encodeURIComponent(requestId)+'&prefix='+encodeURIComponent(cb)+'&_='+Date.now();
-    document.head.appendChild(s);
+  const requestId=randomId();
+  const frame=document.createElement('iframe');
+  const frameName='sakms_bridge_'+requestId.slice(0,20);
+  frame.name=frameName;
+  frame.style.display='none';
+  frame.setAttribute('aria-hidden','true');
+  document.body.appendChild(frame);
+
+  const form=document.createElement('form');
+  form.method='POST';
+  form.action=api;
+  form.target=frameName;
+  form.style.display='none';
+
+  const bridge=document.createElement('input');
+  bridge.type='hidden';
+  bridge.name='bridge';
+  bridge.value='v12';
+
+  const payload=document.createElement('input');
+  payload.type='hidden';
+  payload.name='payload';
+  payload.value=JSON.stringify({
+    requestId:requestId,
+    functionName:fn,
+    args:args||[]
+  });
+
+  form.appendChild(bridge);
+  form.appendChild(payload);
+  document.body.appendChild(form);
+
+  let finished=false;
+
+  function cleanup(){
+    window.removeEventListener('message',receive);
+    try{form.remove()}catch(e){}
+    setTimeout(()=>{try{frame.remove()}catch(e){}},50);
   }
 
-  fetch(api,{
-    method:'POST',
-    mode:'no-cors',
-    cache:'no-store',
-    headers:{'Content-Type':'text/plain;charset=UTF-8'},
-    body:body
-  }).catch(()=>{});
-  setTimeout(poll,800);
+  function receive(event){
+    if(finished)return;
+    if(event.source!==frame.contentWindow)return;
+    const data=event.data;
+    if(!data||data.bridge!=='SAKMS_V12'||data.requestId!==requestId)return;
+
+    finished=true;
+    clearTimeout(timer);
+    cleanup();
+
+    if(data.ok)onSuccess(data.result);
+    else onFailure(new Error(data.error||'Server error.'));
+  }
+
+  window.addEventListener('message',receive);
+
+  const timer=setTimeout(()=>{
+    if(finished)return;
+    finished=true;
+    cleanup();
+    onFailure(new Error('Server response timed out. Tekan cuba semula.'));
+  },25000);
+
+  try{
+    form.submit();
+  }catch(e){
+    clearTimeout(timer);
+    finished=true;
+    cleanup();
+    onFailure(e);
+  }
 }
+
 function init(){
   hide('loading');
   if(!deployment()){show('setup');return}
@@ -267,9 +313,13 @@ function showPending(message){
 function closeReceipt(){hide('receipt');show('home');refreshSessions()}
 function forgetDevice(){
   if(confirm('Register this browser again using another matric/email?')){
-    localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(OLD_TOKEN_KEY);profile=null;hide('home');show('register')
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(OLD_TOKEN_KEY);
+    localStorage.removeItem(OLDEST_TOKEN_KEY);
+    profile=null;hide('home');show('register')
   }
 }
+
 init();
 </script>
 </body>
