@@ -179,10 +179,10 @@ function init(){
 function requestOtp(){
   const matric=el('matric').value.trim().toUpperCase();
   const email=el('email').value.trim().toLowerCase();
-  if(!/^MS\\d{6,}$/i.test(matric)){
+  if(!/^MS\d{6,}$/i.test(matric)){
     msg('registerMsg','Please enter a valid matric number beginning with MS.','error');return;
   }
-  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email)){
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){
     msg('registerMsg','Please enter a valid personal email address.','error');return;
   }
   const b=el('otpBtn');if(b.disabled)return;
