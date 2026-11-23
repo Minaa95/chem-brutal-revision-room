@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#17324d">
+<title>SMART ATTENDANCE KMS</title>
+<style>
+:root{--navy:#17324d;--teal:#087e78;--bg:#f2f6f8;--ink:#1b2733;--muted:#667786;--line:#dce5eb;--red:#9f3333;--green:#176f48;--amber:#8a5a13}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font:16px/1.45 Arial,sans-serif;color:var(--ink)}
+header{background:linear-gradient(120deg,#17324d,#205b67);color:#fff;padding:22px 18px}
+header h1{font-size:21px;margin:0}header p{margin:5px 0 0;color:#d8e6ec;font-size:13px}
+.wrap{max-width:760px;margin:18px auto;padding:0 14px 40px}.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin:12px 0;box-shadow:0 4px 18px #17324d0b}
+.hide{display:none!important}.muted{color:var(--muted);font-size:14px}.small{font-size:12px}.center{text-align:center}
+.input{width:100%;padding:13px;border:1px solid var(--line);border-radius:11px;font-size:16px;margin:7px 0}
+.btn{width:100%;border:0;border-radius:12px;padding:14px 16px;font-size:16px;font-weight:700;cursor:pointer;margin:6px 0;background:var(--teal);color:#fff}
+.btn.secondary{background:#eaf0f4;color:var(--navy)}.btn.warn{background:#fff2df;color:#75480e}.btn:disabled{opacity:.55}
+.status{padding:12px;border-radius:11px;background:#eef4f7;margin:10px 0}.ok{background:#e8f5ed;color:#155b39}.error{background:#fbeaea;color:#852d2d}.pending{background:#fff4e3;color:#75480e}
+.session{border:1px solid var(--line);border-radius:14px;padding:15px;margin:10px 0}.session h3{margin:0 0 5px;font-size:17px}.session p{margin:4px 0}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.pill{display:inline-block;padding:5px 9px;border-radius:99px;background:#e8eff4;font-size:11px;font-weight:700}
+.receipt{border:2px solid #cfe7db;background:#f8fffb}.receipt .big{font-size:54px;line-height:1;margin:6px 0}.receipt h2{color:var(--green);margin:8px 0}.receipt dl{display:grid;grid-template-columns:120px 1fr;gap:8px;text-align:left}.receipt dt{color:var(--muted)}.receipt dd{margin:0;font-weight:700}
+a.formlink{display:block;text-decoration:none;text-align:center;padding:13px;border-radius:12px;background:#eef4f7;color:var(--navy);font-weight:700;margin-top:10px}
+hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+.loader{display:inline-block;width:18px;height:18px;border:3px solid #d4e0e6;border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-4px;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}
+.setup{border:1px dashed #d5a44f;background:#fffaf0}.setup code{font-size:12px;word-break:break-all}
+@media(max-width:520px){.wrap{margin:10px auto}.card{padding:15px}.receipt dl{grid-template-columns:95px 1fr}}
+</style>
+</head>
+<body>
+<header><h1>SMART ATTENDANCE KMS</h1><p>Kehadiran mudah, rekod tersusun</p></header>
+<main class="wrap">
+
+<section id="loading" class="card"><span class="loader"></span>Memuatkan SMART ATTENDANCE…</section>
+
+<section id="setup" class="card setup hide">
+  <h2>Lecturer setup</h2>
+  <p class="muted">Paste the current public Apps Script <b>/exec</b> URL once. This page will generate the student link for you.</p>
+  <input id="apiInput" class="input" placeholder="https://script.google.com/macros/s/.../exec">
+  <button class="btn" onclick="makeStudentLink()">Generate student link</button>
+  <div id="setupResult"></div>
+</section>
+
+<section id="register" class="card hide">
+  <h2>First-time registration</h2>
+  <p class="muted">Register once using your own matric number and email. After verification, this browser will remember you.</p>
+  <input id="matric" class="input" placeholder="Matric no. e.g. MS2623..." autocomplete="off">
+  <input id="email" class="input" type="email" placeholder="Your own email address" autocomplete="email">
+  <button id="otpBtn" class="btn" onclick="requestOtp()">Send verification code</button>
+  <div id="otpArea" class="hide">
+    <input id="otp" class="input" placeholder="8-character verification code" autocomplete="one-time-code">
+    <button id="verifyBtn" class="btn" onclick="verifyOtp()">Verify & register this device</button>
+  </div>
+  <div id="registerMsg"></div>
+</section>
+
+<section id="home" class="hide">
+  <section class="card">
+    <div class="row"><div><h2 id="studentName" style="margin:0"></h2><div id="studentMatric" class="muted"></div></div><span class="pill">REGISTERED DEVICE</span></div>
+    <p id="studentClasses" class="muted"></p>
+    <button class="btn secondary" onclick="refreshSessions()">Refresh sessions</button>
+    <button class="btn secondary" onclick="forgetDevice()">Register another device/account</button>
+  </section>
+
+  <section class="card">
+    <h2>Attendance session</h2>
+    <div id="sessions"></div>
+    <a class="formlink" href="https://docs.google.com/forms/d/1LRSYNS1P6aa_v9EzF8vh-SNHP34wKVyAwAPbrMlWAoc/viewform" target="_blank" rel="noopener">Submit supporting document / surat sokongan</a>
+  </section>
+</section>
+
+<section id="receipt" class="card receipt center hide">
+  <div class="big" id="receiptIcon">✓</div>
+  <h2 id="receiptTitle">KEHADIRAN BERJAYA DIREKODKAN</h2>
+  <p id="receiptSubtitle"></p>
+  <dl id="receiptDetails"></dl>
+  <button class="btn secondary" onclick="closeReceipt()">Back to attendance</button>
+</section>
+
+<section id="fatal" class="card hide"><div id="fatalMsg" class="status error"></div></section>
+
+</main>
+<script>
+const TOKEN_KEY='sakms_device_v10';
+const DEPLOY_KEY='sakms_deployment_v10';
+let profile=null;
+
+function el(id){return document.getElementById(id)}
+function show(id){el(id).classList.remove('hide')}
+function hide(id){el(id).classList.add('hide')}
+function msg(id,text,kind='status'){el(id).innerHTML='<div class="status '+kind+'"></div>';el(id).firstChild.textContent=text}
+function typeLabel(t){return ({LECTURE:'KULIAH',TUTORIAL:'TUTORAN',PRACTICAL:'AMALI'})[String(t||'').toUpperCase()]||t}
+function token(){return localStorage.getItem(TOKEN_KEY)||''}
+function deployment(){
+  const q=new URLSearchParams(location.search).get('d');
+  if(q && /^[A-Za-z0-9_-]+$/.test(q)){localStorage.setItem(DEPLOY_KEY,q);return q}
+  return localStorage.getItem(DEPLOY_KEY)||''
+}
+function apiUrl(){
+  const d=deployment();
+  return d?'https://script.google.com/macros/s/'+d+'/exec':''
+}
+function randomId(){
+  if(window.crypto&&crypto.randomUUID)return crypto.randomUUID().replace(/-/g,'');
+  return Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)
+}
+function deploymentFromUrl(v){
+  const m=String(v||'').trim().match(/\/macros\/s\/([^/]+)\/exec/);
+  return m?m[1]:''
+}
+function makeStudentLink(){
+  const d=deploymentFromUrl(el('apiInput').value);
+  if(!d){msg('setupResult','That does not look like an Apps Script /exec URL.','error');return}
+  localStorage.setItem(DEPLOY_KEY,d);
+  const url=location.origin+location.pathname+'?d='+encodeURIComponent(d);
+  el('setupResult').innerHTML='';
+  const box=document.createElement('div');box.className='status ok';
+  const p=document.createElement('p');p.textContent='Student link ready. Send THIS link to students:';
+  const c=document.createElement('code');c.textContent=url;
+  const b=document.createElement('button');b.className='btn secondary';b.textContent='Copy student link';
+  b.onclick=()=>navigator.clipboard.writeText(url).then(()=>b.textContent='Copied ✓');
+  box.append(p,c,b);el('setupResult').appendChild(box);
+}
+function externalCall(fn,args,onSuccess,onFailure){
+  const api=apiUrl();
+  if(!api){onFailure(new Error('Student API is not configured.'));return}
+  const requestId=randomId();
+  const body=JSON.stringify({requestId:requestId,functionName:fn,args:args||[]});
+  let finished=false,tries=0;
+
+  function poll(){
+    if(finished)return;
+    tries++;
+    if(tries>80){finished=true;onFailure(new Error('Server response timed out. Please try again.'));return}
+    const cb='sakms_cb_'+requestId.slice(0,16)+'_'+tries;
+    const s=document.createElement('script');
+    const cleanup=()=>{try{delete window[cb]}catch(e){};s.remove()};
+    window[cb]=data=>{
+      cleanup();
+      if(!data||!data.ready){setTimeout(poll,300);return}
+      finished=true;
+      if(data.ok)onSuccess(data.result);
+      else onFailure(new Error(data.error||'Server error.'));
+    };
+    s.onerror=()=>{cleanup();setTimeout(poll,500)};
+    s.src=api+'?api=status&requestId='+encodeURIComponent(requestId)+'&prefix='+encodeURIComponent(cb)+'&_='+Date.now();
+    document.head.appendChild(s);
+  }
+
+  fetch(api,{
+    method:'POST',
+    mode:'no-cors',
+    cache:'no-store',
+    headers:{'Content-Type':'text/plain;charset=UTF-8'},
+    body:body
+  }).catch(()=>{});
+  setTimeout(poll,250);
+}
+function init(){
+  hide('loading');
+  if(!deployment()){show('setup');return}
+  if(!token()){show('register');return}
+  show('loading');
+  externalCall('bootstrapStudentV8',[token()],r=>{
+    hide('loading');
+    if(r&&r.profile){renderHome(r.profile,r.sessions||[])}
+    else{localStorage.removeItem(TOKEN_KEY);show('register')}
+  },e=>{hide('loading');msg('fatalMsg',e.message,'error');show('fatal')});
+}
+function requestOtp(){
+  const matric=el('matric').value.trim().toUpperCase();
+  const email=el('email').value.trim().toLowerCase();
+  const b=el('otpBtn');b.disabled=true;b.textContent='Sending…';
+  externalCall('requestStudentOtp',[matric,email],r=>{
+    b.disabled=false;b.textContent='Send verification code';show('otpArea');msg('registerMsg',r.message||'Code sent.','ok')
+  },e=>{b.disabled=false;b.textContent='Send verification code';msg('registerMsg',e.message,'error')});
+}
+function verifyOtp(){
+  const matric=el('matric').value.trim().toUpperCase();
+  const email=el('email').value.trim().toLowerCase();
+  const otp=el('otp').value.trim().toUpperCase();
+  const b=el('verifyBtn');b.disabled=true;b.textContent='Verifying…';
+  externalCall('verifyStudentOtp',[matric,email,otp,navigator.userAgent||''],r=>{
+    b.disabled=false;b.textContent='Verify & register this device';
+    localStorage.setItem(TOKEN_KEY,r.deviceToken);
+    hide('register');renderHome(r.profile,r.sessions||[])
+  },e=>{b.disabled=false;b.textContent='Verify & register this device';msg('registerMsg',e.message,'error')});
+}
+function renderHome(p,sessions){
+  profile=p;hide('register');hide('fatal');hide('receipt');show('home');
+  el('studentName').textContent=p.name||'Student';
+  el('studentMatric').textContent=p.matric||'';
+  el('studentClasses').textContent=(p.classTabs||[]).map(x=>x.classTab+' ('+typeLabel(x.type)+')').join(' · ');
+  renderSessions(sessions||[]);
+}
+function renderSessions(sessions){
+  const root=el('sessions');root.innerHTML='';
+  if(!sessions.length){root.innerHTML='<div class="status">No attendance session is open for you right now.</div>';return}
+  sessions.forEach(s=>{
+    const d=document.createElement('div');d.className='session';
+    const h=document.createElement('h3');h.textContent=s.classTab+' · '+typeLabel(s.type);
+    const p=document.createElement('p');p.className='muted';p.textContent=s.date+' | '+s.start+'–'+s.end;
+    if(s.manual&&s.replacementForDates&&s.replacementForDates.length){
+      const r=document.createElement('p');r.className='small muted';r.textContent='Replacement for BKP: '+s.replacementForDates.join(', ');d.append(h,p,r)
+    }else d.append(h,p);
+    const check=document.createElement('button');check.className='btn';check.textContent='Hadir sekarang';check.onclick=()=>checkIn(s,check);
+    const manual=document.createElement('button');manual.className='btn warn';manual.textContent='Saya di sini, Mdm. Mohon pengesahan';manual.onclick=()=>manualRequest(s,manual);
+    d.append(check,manual);root.appendChild(d)
+  })
+}
+function refreshSessions(){
+  msg('sessions','Refreshing…','status');
+  externalCall('getMySessions',[token()],r=>{profile=r.profile;renderSessions(r.sessions||[])},e=>msg('sessions',e.message,'error'))
+}
+function checkIn(session,button){
+  button.disabled=true;button.textContent='Checking GPS…';
+  if(!navigator.geolocation){button.disabled=false;button.textContent='Hadir sekarang';showPending('GPS is not available on this browser.');return}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    externalCall('checkIn',[{
+      sessionId:session.sessionId,
+      deviceToken:token(),
+      lat:pos.coords.latitude,
+      lng:pos.coords.longitude,
+      accuracy:pos.coords.accuracy
+    }],r=>{
+      button.disabled=false;button.textContent='Hadir sekarang';
+      if(r.status==='SUCCESS'||r.status==='ALREADY')showSuccess(r.receipt||{},r.message);
+      else showPending(r.message||'Menunggu pengesahan pensyarah.')
+    },e=>{button.disabled=false;button.textContent='Hadir sekarang';showPending(e.message)})
+  },err=>{button.disabled=false;button.textContent='Hadir sekarang';showPending('Lokasi tidak dapat diperoleh. Sila pastikan Location Services dibenarkan.')},
+  {enableHighAccuracy:true,timeout:15000,maximumAge:0})
+}
+function manualRequest(session,button){
+  button.disabled=true;button.textContent='Sending…';
+  externalCall('requestManualAttendance',[session.sessionId,token()],r=>{
+    button.disabled=false;button.textContent='Saya di sini, Mdm. Mohon pengesahan';showPending(r.message)
+  },e=>{button.disabled=false;button.textContent='Saya di sini, Mdm. Mohon pengesahan';showPending(e.message)})
+}
+function receiptRow(label,value){
+  const dt=document.createElement('dt');dt.textContent=label;
+  const dd=document.createElement('dd');dd.textContent=value||'—';
+  el('receiptDetails').append(dt,dd)
+}
+function showSuccess(r,message){
+  hide('home');el('receiptDetails').innerHTML='';el('receiptIcon').textContent='✓';
+  el('receiptTitle').textContent='KEHADIRAN BERJAYA DIREKODKAN';
+  el('receiptTitle').style.color='var(--green)';el('receiptSubtitle').textContent=message||'Your attendance has been recorded.';
+  receiptRow('Status','HADIR · LOKASI DISAHKAN');receiptRow('Name',r.name||profile?.name);receiptRow('Matric',r.matric||profile?.matric);
+  receiptRow('Class',r.classTab);receiptRow('Session',typeLabel(r.type));receiptRow('Date',r.date);receiptRow('Time',r.time);
+  receiptRow('GPS accuracy',r.accuracy?String(r.accuracy)+' m':'—');receiptRow('Distance',r.distance?String(r.distance)+' m':'—');
+  show('receipt')
+}
+function showPending(message){
+  hide('home');el('receiptDetails').innerHTML='';el('receiptIcon').textContent='⏳';
+  el('receiptTitle').textContent='MENUNGGU PENGESAHAN PENSYARAH';el('receiptTitle').style.color='var(--amber)';
+  el('receiptSubtitle').textContent=message||'Kehadiran belum disahkan.';show('receipt')
+}
+function closeReceipt(){hide('receipt');show('home');refreshSessions()}
+function forgetDevice(){
+  if(confirm('Register this browser again using another matric/email?')){
+    localStorage.removeItem(TOKEN_KEY);profile=null;hide('home');show('register')
+  }
+}
+init();
+</script>
+</body>
+</html>
