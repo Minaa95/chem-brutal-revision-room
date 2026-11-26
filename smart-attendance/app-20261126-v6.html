@@ -83,7 +83,7 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 
 </main>
 <script>
-const APP_BUILD='2026-11-26-student-v6';
+const APP_BUILD='2026-11-26-student-v6.1';
 const TOKEN_KEY='sakms_device_v10';
 const TOKEN_BACKUP_KEY='sakms_device_v10_backup';
 const LEGACY_TOKEN_KEY='SMART_ATTENDANCE_KMS_DEVICE_V7';
@@ -133,7 +133,7 @@ function sendStudentIncident(kind,operation,elapsedMs,message,requestId){
     kind:kind,
     operation:String(operation||'UNKNOWN').slice(0,60),
     elapsedMs:Math.max(0,Math.min(120000,Number(elapsedMs)||0)),
-    message:String(message||'').replace(/\\s+/g,' ').slice(0,180),
+    message:String(message||'').replace(/\s+/g,' ').slice(0,180),
     build:APP_BUILD,
     browser:String(navigator.userAgent||'').slice(0,90),
     online:navigator.onLine===true,
@@ -173,7 +173,7 @@ function makeStudentLink(){
 function externalCall(fn,args,onSuccess,onFailure){
   const api=apiUrl(),requestId=randomId();
   const body=JSON.stringify({requestId,functionName:fn,args:args||[]});
-  const started=Date.now(),deadline=fn==='checkIn'?60000:((fn==='getMySessions'||fn==='bootstrapStudentV8')?45000:90000);
+  const started=Date.now(),deadline=120000;
   let done=false,scheduled=false,polling=false,tries=0,delay=1200,timer=null,watchdog=null;
   function finish(ok,value){
     if(done)return;done=true;clearTimeout(timer);clearTimeout(watchdog);
@@ -187,9 +187,10 @@ function externalCall(fn,args,onSuccess,onFailure){
     if(ok)onSuccess(value);else onFailure(value)
   }
   function timeoutError(){
-    if(fn==='checkIn')return new Error('The server did not confirm check-in within 60 seconds. Your attendance may already be recorded. Refresh attendance before trying again; do not register again.');
-    if(fn==='getMySessions'||fn==='bootstrapStudentV8')return new Error('The server is taking too long to load your sessions. Your saved access has not been deleted. Please retry; do not register again.');
-    return new Error('Connection timed out. Your request may already have been received. Please check before retrying.');
+    if(fn==='checkIn')return new Error('The server did not confirm check-in within 120 seconds. Your attendance may already be recorded. Return to attendance and refresh before trying again; do not register again.');
+    if(fn==='getMySessions'||fn==='bootstrapStudentV8')return new Error('The server is taking too long to load your sessions. Your saved access has not been deleted. Retry the connection; do not register again.');
+    if(fn==='requestStudentOtp')return new Error('The verification-code request was not confirmed within 120 seconds. Check your email before requesting another code.');
+    return new Error('The server did not confirm this request within 120 seconds. It may already have been received. Your account and attendance records remain unchanged. Check the relevant status before retrying.');
   }
   function schedule(ms){
     if(done||scheduled||polling)return;
@@ -203,7 +204,7 @@ function externalCall(fn,args,onSuccess,onFailure){
     const cb='sakms_cb_'+requestId.slice(0,20)+'_'+tries;
     const s=document.createElement('script');let settled=false,timeout;
     function clean(){clearTimeout(timeout);polling=false;try{delete window[cb]}catch(e){};s.remove()}
-    function again(){if(settled)return;settled=true;clean();delay=Math.min(5000,Math.round(delay*1.5));schedule(delay+Math.random()*600)}
+    function again(){if(settled)return;settled=true;clean();delay=Math.min(8000,Math.round(delay*1.65));schedule(delay+Math.random()*600)}
     window[cb]=data=>{
       if(settled)return;
       if(!data||!data.ready){again();return}
@@ -211,7 +212,7 @@ function externalCall(fn,args,onSuccess,onFailure){
       if(data.ok)finish(true,data.result);
       else finish(false,new Error(data.error||'Server error.'))
     };
-    s.onload=again;s.onerror=again;timeout=setTimeout(again,8000);
+    s.onload=again;s.onerror=again;timeout=setTimeout(again,12000);
     s.src=api+'?api=status&requestId='+encodeURIComponent(requestId)+'&prefix='+encodeURIComponent(cb)+'&_='+Date.now();
     document.head.appendChild(s)
   }
@@ -303,8 +304,14 @@ function refreshSessions(){
 }
 function checkIn(session,button){
   if(busy)return;busy=true;button.disabled=true;button.textContent='Checking GPS…';
-  if(!navigator.geolocation){busy=false;button.disabled=false;button.textContent='Hadir sekarang';showActionError('GPS is unavailable. Use the manual verification button if you are in class.');return}
+  const gpsStarted=Date.now();
+  if(!navigator.geolocation){
+    sendStudentIncident('STUDENT_CLIENT_ERROR','GPS_ACQUISITION',0,'Geolocation API unavailable');
+    busy=false;button.disabled=false;button.textContent='Hadir sekarang';showActionError('GPS is unavailable. Use the manual verification button if you are in class.');return
+  }
   navigator.geolocation.getCurrentPosition(pos=>{
+    const gpsElapsed=Date.now()-gpsStarted;
+    if(gpsElapsed>=10000)sendStudentIncident('STUDENT_CLIENT_SLOW','GPS_ACQUISITION',gpsElapsed,'GPS location was acquired slowly');
     externalCall('checkIn',[{
       sessionId:session.sessionId,
       deviceToken:token(),
@@ -317,8 +324,12 @@ function checkIn(session,button){
       else if(r.status==='PENDING')showPending(r.message||'Menunggu pengesahan pensyarah.');
       else showActionError(r.message||'Permintaan tidak berjaya. Sila cuba semula.')
     },e=>{busy=false;button.disabled=false;button.textContent='Hadir sekarang';showActionError(e.message+' If your access is invalid, return and use Retry / recover access.')})
-  },err=>{busy=false;button.disabled=false;button.textContent='Hadir sekarang';showActionError('Lokasi tidak dapat diperoleh. Benarkan Location Services atau mohon pengesahan manual.')},
-  {enableHighAccuracy:true,timeout:20000,maximumAge:0})
+  },err=>{
+    const gpsElapsed=Date.now()-gpsStarted;
+    const gpsCode=err&&err.code?String(err.code):'UNKNOWN';
+    sendStudentIncident('STUDENT_CLIENT_ERROR','GPS_ACQUISITION',gpsElapsed,'Geolocation failed; code '+gpsCode);
+    busy=false;button.disabled=false;button.textContent='Hadir sekarang';showActionError('Lokasi tidak dapat diperoleh. Benarkan Location Services atau mohon pengesahan manual.')
+  },{enableHighAccuracy:true,timeout:20000,maximumAge:0})
 }
 function manualRequest(session,button){
   if(busy)return;busy=true;button.disabled=true;button.textContent='Sending…';
