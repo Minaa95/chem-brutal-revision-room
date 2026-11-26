@@ -50,7 +50,8 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
   <input id="email" class="input" type="email" placeholder="Your own email address" autocomplete="email">
   <button id="otpBtn" class="btn" onclick="requestOtp()">Send verification code</button>
   <div id="otpArea" class="hide">
-    <input id="otp" class="input" placeholder="8-character verification code" autocomplete="one-time-code">
+    <p id="otpHint" class="muted">Enter the 8-character code sent to your email. The code is valid for 10 minutes.</p>
+    <input id="otp" class="input" placeholder="8-character verification code" autocomplete="one-time-code" inputmode="text">
     <button id="verifyBtn" class="btn" onclick="verifyOtp()">Verify & continue</button>
   </div>
   <div id="registerMsg"></div>
@@ -83,7 +84,7 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 
 </main>
 <script>
-const APP_BUILD='2026-11-26-student-v6.1';
+const APP_BUILD='2026-11-26-student-v6.2';
 const TOKEN_KEY='sakms_device_v10';
 const TOKEN_BACKUP_KEY='sakms_device_v10_backup';
 const LEGACY_TOKEN_KEY='SMART_ATTENDANCE_KMS_DEVICE_V7';
@@ -256,13 +257,22 @@ function requestOtp(){
     msg('registerMsg','Please enter a valid personal email address.','error');return;
   }
   const b=el('otpBtn');if(b.disabled)return;
+  // Reveal the OTP field immediately. Email delivery and status polling are
+  // separate; the student must not lose the input if the browser misses a reply.
+  show('otpArea');
+  if(el('otpHint'))el('otpHint').textContent='The code entry box is ready. Enter the 8-character code as soon as it arrives. It is valid for 10 minutes.';
   b.disabled=true;b.textContent='Sending… please wait';
-  msg('registerMsg','Connecting to Google and sending your verification code. Please do not press the button again.','pending');
+  msg('registerMsg','Requesting your verification code. The entry box is already available below; check your inbox and spam folder.','pending');
   externalCall('requestStudentOtp',[matric,email],r=>{
-    b.disabled=false;b.textContent='Send verification code';show('otpArea');
+    b.disabled=false;b.textContent='Send verification code';
+    show('otpArea');
+    if(el('otpHint'))el('otpHint').textContent='Code sent. Enter the 8-character code from your email below.';
     msg('registerMsg',r.message||'Code sent. Please check your inbox and spam folder.','ok');
   },e=>{
-    b.disabled=false;b.textContent='Send verification code';msg('registerMsg',e.message,'error');
+    b.disabled=false;b.textContent='Send verification code';
+    show('otpArea');
+    if(el('otpHint'))el('otpHint').textContent='If the email has arrived, enter its code here. The request may have completed even if the browser did not receive confirmation. Check inbox/spam before requesting another code.';
+    msg('registerMsg',e.message+' If you received the email, enter the code below.','error');
   });
 }
 function verifyOtp(){
@@ -320,7 +330,7 @@ function checkIn(session,button){
       accuracy:pos.coords.accuracy
     }],r=>{
       busy=false;button.disabled=false;button.textContent='Hadir sekarang';
-      if(r.status==='SUCCESS'||r.status==='ALREADY')showSuccess(r.receipt||{},r.message);
+      if(r.status==='SUCCESS'||r.status==='ALREADY')showSuccess(r.receipt||{},r.message,r.note||'');
       else if(r.status==='PENDING')showPending(r.message||'Menunggu pengesahan pensyarah.');
       else showActionError(r.message||'Permintaan tidak berjaya. Sila cuba semula.')
     },e=>{busy=false;button.disabled=false;button.textContent='Hadir sekarang';showActionError(e.message+' If your access is invalid, return and use Retry / recover access.')})
@@ -345,12 +355,17 @@ function receiptRow(label,value){
   const dd=document.createElement('dd');dd.textContent=value||'—';
   el('receiptDetails').append(dt,dd)
 }
-function showSuccess(r,message){
+function showSuccess(r,message,bkpNote){
+  const note=String(bkpNote||'').trim();
+  const pending=/menunggu penyegerakan|sedang disegerakkan/i.test(note);
+  const conflict=/memerlukan semakan|konflik/i.test(note);
   hide('home');el('receiptDetails').innerHTML='';el('receiptIcon').textContent='✓';
-  el('receiptTitle').textContent='KEHADIRAN BERJAYA DIREKODKAN';
-  el('receiptTitle').style.color='var(--green)';el('receiptSubtitle').textContent=message||'Your attendance has been recorded.';
+  el('receiptTitle').textContent=conflict?'KEHADIRAN DIREKODKAN — BKP PERLU SEMAKAN':pending?'KEHADIRAN DIREKODKAN — BKP SEDANG DIKEMAS KINI':'KEHADIRAN BERJAYA DIREKODKAN';
+  el('receiptTitle').style.color=(pending||conflict)?'var(--amber)':'var(--green)';
+  el('receiptSubtitle').textContent=conflict?'Kehadiran anda telah direkodkan. Tanda BKP memerlukan semakan pensyarah.':pending?'Kehadiran anda telah direkodkan. Tanda BKP sedang disegerakkan secara automatik. Sila beri sedikit masa.':(message||'Your attendance has been recorded.');
   receiptRow('Status','HADIR · DIREKODKAN');receiptRow('Name',r.name||profile?.name);receiptRow('Matric',r.matric||profile?.matric);
   receiptRow('Class',r.classTab);receiptRow('Session',typeLabel(r.type));receiptRow('Date',r.date);receiptRow('Time',r.time);
+  receiptRow('BKP status',note||'Status BKP belum diterima.');
   receiptRow('GPS accuracy',r.accuracy?String(r.accuracy)+' m':'—');receiptRow('Distance',r.distance?String(r.distance)+' m':'—');
   show('receipt')
 }
