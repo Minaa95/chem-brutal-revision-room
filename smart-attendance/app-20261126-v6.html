@@ -230,13 +230,14 @@ function init(){
   if(booting)return;
   hide('fatal');hide('register');hide('home');hide('receipt');hide('setup');show('loading');
   const tokens=[...new Set([activeToken,...candidates()].filter(validToken))];
-  if(!tokens.length){hide('loading');show('register');msg('registerMsg','No saved browser access was found. Verify using your original registered email; your attendance records remain محفوظ.','status');return}
+  if(!tokens.length){hide('loading');show('register');msg('registerMsg','No saved browser access was found. Verify using your original registered email; your attendance records remain safe.','status');return}
   booting=true;
   function attempt(i){
     if(i>=tokens.length){
       booting=false;hide('loading');show('register');
       msg('registerMsg','This browser no longer has an active saved token. Verify using your original registered email to restore access. Your attendance records are unchanged.','status');return
     }
+    activeToken=tokens[i];
     externalCall('bootstrapStudentV8',[tokens[i]],r=>{
       if(r&&r.profile&&r.auth!==false){booting=false;rememberToken(tokens[i]);hide('loading');renderHome(r.profile,r.sessions||[])}
       else {forgetCandidate(tokens[i]);attempt(i+1)}
