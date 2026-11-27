@@ -1,0 +1,18 @@
+name = "sakms-cloudflare-poc"
+compatibility_date = "2026-11-27"
+pages_build_output_dir = "./public"
+
+# Create this D1 database in your Cloudflare account, then replace the
+# placeholder database_id below with the ID Cloudflare returns.
+[[d1_databases]]
+binding = "DB"
+database_name = "sakms-cloudflare-poc"
+database_id = "REPLACE_AFTER_CREATING_D1"
+migrations_dir = "migrations"
+
+# This branch is a dummy-data proof of concept only.
+# Never set DEMO_MODE=true for a production attendance deployment.
+[vars]
+APP_ENV = "demo"
+DEMO_MODE = "true"
+OTP_MODE = "demo"
