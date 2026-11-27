@@ -7,7 +7,7 @@ pages_build_output_dir = "./public"
 [[d1_databases]]
 binding = "DB"
 database_name = "sakms-cloudflare-poc"
-database_id = "00000000-0000-0000-0000-000000000001"
+database_id = "fdccee8f-de1a-443b-9c5f-71e073265446"
 migrations_dir = "migrations"
 
 # This branch is a dummy-data proof of concept only.
