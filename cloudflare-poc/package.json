@@ -1,0 +1,15 @@
+{
+  "name": "sakms-cloudflare-poc",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dummy-data proof of concept for SMART ATTENDANCE KMS on Cloudflare Pages Functions and D1.",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "db:local": "wrangler d1 migrations apply sakms-cloudflare-poc --local",
+    "db:remote": "wrangler d1 migrations apply sakms-cloudflare-poc --remote",
+    "load": "node tests/load-test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
