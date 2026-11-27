@@ -89,24 +89,23 @@ async function requestOtp(request, env, requestId, started) {
   }
 
   const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-  const recent = await env.DB.prepare(
-    "SELECT COUNT(*) AS total FROM otp_challenges WHERE matric = ? AND created_at >= ?"
-  ).bind(matric, cutoff).first();
-
-  if (Number(recent && recent.total || 0) >= 3) {
-    return fail("Too many demo OTP requests for this student. Wait 15 minutes before trying again.", 429, requestId, started, "OTP_RATE_LIMITED");
-  }
-
   const challengeId = crypto.randomUUID();
   const codeHash = await sha256(challengeId + ":" + DEMO_OTP + ":" + pepper(env));
   const now = new Date();
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString();
 
-  await env.DB.prepare(
+  // Enforce the per-student rate limit inside the INSERT itself. This avoids
+  // a check-then-insert race when several OTP requests arrive together.
+  const inserted = await env.DB.prepare(
     "INSERT INTO otp_challenges (id, matric, email, code_hash, status, attempts, created_at, expires_at) " +
-    "VALUES (?, ?, ?, ?, 'PENDING', 0, ?, ?)"
-  ).bind(challengeId, matric, email, codeHash, createdAt, expiresAt).run();
+    "SELECT ?, ?, ?, ?, 'PENDING', 0, ?, ? " +
+    "WHERE (SELECT COUNT(*) FROM otp_challenges WHERE matric = ? AND created_at >= ?) < 3"
+  ).bind(challengeId, matric, email, codeHash, createdAt, expiresAt, matric, cutoff).run();
+
+  if (Number(inserted && inserted.meta && inserted.meta.changes || 0) !== 1) {
+    return fail("Too many demo OTP requests for this student. Wait 15 minutes before trying again.", 429, requestId, started, "OTP_RATE_LIMITED");
+  }
 
   return response({
     ok: true,
@@ -312,16 +311,17 @@ async function checkIn(request, env, requestId, started) {
 }
 
 async function metrics(env, requestId, started) {
-  const names = ["students", "enrolments", "sessions", "attendance", "sync_outbox", "otp_challenges"];
+  const result = await env.DB.prepare(
+    "SELECT 'students' AS metric, COUNT(*) AS total FROM students " +
+    "UNION ALL SELECT 'enrolments', COUNT(*) FROM enrolments " +
+    "UNION ALL SELECT 'sessions', COUNT(*) FROM sessions " +
+    "UNION ALL SELECT 'attendance', COUNT(*) FROM attendance " +
+    "UNION ALL SELECT 'sync_outbox', COUNT(*) FROM sync_outbox " +
+    "UNION ALL SELECT 'otp_challenges', COUNT(*) FROM otp_challenges " +
+    "UNION ALL SELECT 'pendingOutbox', COUNT(*) FROM sync_outbox WHERE status IN ('PENDING', 'RETRY', 'PROCESSING')"
+  ).all();
   const counts = {};
-  for (const name of names) {
-    const row = await env.DB.prepare("SELECT COUNT(*) AS total FROM " + name).first();
-    counts[name] = Number(row && row.total || 0);
-  }
-  const pending = await env.DB.prepare(
-    "SELECT COUNT(*) AS total FROM sync_outbox WHERE status IN ('PENDING', 'RETRY', 'PROCESSING')"
-  ).first();
-  counts.pendingOutbox = Number(pending && pending.total || 0);
+  (result.results || []).forEach(function (row) { counts[row.metric] = Number(row.total || 0); });
   return response({ ok: true, demoOnly: true, counts: counts }, 200, requestId, started);
 }
 
@@ -374,6 +374,12 @@ export async function onRequest(context) {
 
     return fail("API endpoint not found.", 404, requestId, started, "NOT_FOUND");
   } catch (error) {
+    if (error && error.name === "SyntaxError") {
+      return fail("The request body is not valid JSON.", 400, requestId, started, "INVALID_JSON");
+    }
+    if (error && error.message === "Request body is too large.") {
+      return fail("The request body exceeds the prototype limit.", 413, requestId, started, "BODY_TOO_LARGE");
+    }
     console.error("Sakms POC request failed", requestId, error && error.name ? error.name : "Error");
     return fail("The prototype could not complete this request. Check the request ID in the developer logs.", 500, requestId, started, "INTERNAL_ERROR");
   }
