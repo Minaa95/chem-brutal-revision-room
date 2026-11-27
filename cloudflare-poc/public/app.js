@@ -74,6 +74,7 @@ async function requestOtp(event) {
   if (busy) return;
   const matric = $("matric").value.trim().toUpperCase();
   const email = $("email").value.trim().toLowerCase();
+  activeChallengeId = "";
   if (!/^MSDEMO\d{5}$/.test(matric) || !/^[^@\s]+@example\.invalid$/i.test(email)) {
     setMessage($("registerMessage"), "Use a seeded demo matric number and matching example.invalid email.", "error");
     return;
