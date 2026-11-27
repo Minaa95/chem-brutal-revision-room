@@ -26,7 +26,7 @@ Status: isolated prototype; dummy records only; not connected to the live attend
 
 ## Cloudflare Pages project settings
 
-Create a separate Pages project named sakms-cloudflare-poc and connect the GitHub repository.
+Create a separate Pages project named sakms-attendance-lab and connect the GitHub repository.
 
 Use these settings:
 
