@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17324d">
+  <meta name="robots" content="noindex, nofollow">
+  <title>SMART ATTENDANCE KMS · Cloudflare Lab</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand-mark" aria-hidden="true">KMS</div>
+      <div>
+        <p class="eyebrow">SMART ATTENDANCE KMS</p>
+        <h1>Cloudflare reliability lab</h1>
+        <p class="header-subtitle">A separate prototype for faster, more reliable attendance.</p>
+      </div>
+      <span class="environment-badge">SANDBOX · DEMO DATA ONLY</span>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section class="notice" role="note">
+      <strong>Safe testing environment.</strong>
+      This prototype uses 300 synthetic students, simulated OTP and a fictional location at 0,0.
+      It does not access KMS student records, send email or update official BKP workbooks.
+    </section>
+
+    <section class="status-grid" aria-label="System status">
+      <article class="status-card">
+        <span class="status-label">API status</span>
+        <strong id="apiStatus" class="status-value">Checking…</strong>
+        <span id="apiDetail" class="status-detail">Connecting to the prototype</span>
+      </article>
+      <article class="status-card">
+        <span class="status-label">Database</span>
+        <strong id="dbStatus" class="status-value">Checking…</strong>
+        <span class="status-detail">Cloudflare D1 binding</span>
+      </article>
+      <article class="status-card">
+        <span class="status-label">Last API response</span>
+        <strong id="apiLatency" class="status-value">—</strong>
+        <span class="status-detail">Browser-measured round trip</span>
+      </article>
+    </section>
+
+    <section class="card" id="registerCard">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">01 · STUDENT ACCESS</p>
+          <h2>Register a demo device</h2>
+          <p class="muted">Use one of the synthetic student identities below.</p>
+        </div>
+        <span class="step-number">01</span>
+      </div>
+
+      <div class="demo-credentials">
+        <div><span>Matric number</span><strong>MSDEMO00001</strong></div>
+        <div><span>Demo email</span><strong>student001@example.invalid</strong></div>
+        <div><span>Demo OTP</span><strong>246810</strong></div>
+      </div>
+
+      <form id="requestOtpForm">
+        <label for="matric">Matric number</label>
+        <input id="matric" name="matric" class="input" autocomplete="off" value="MSDEMO00001" required>
+        <label for="email">Email address</label>
+        <input id="email" name="email" class="input" type="email" autocomplete="email" value="student001@example.invalid" required>
+        <button id="requestOtpButton" class="button primary" type="submit">Send demo verification code</button>
+      </form>
+
+      <section id="otpPanel" class="otp-panel" hidden>
+        <div class="inline-status" id="otpStatus" role="status">Your code entry is ready.</div>
+        <label for="otpCode">Six-digit verification code</label>
+        <input id="otpCode" class="input otp-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="246810">
+        <p class="hint">The OTP field appears immediately. In this sandbox, no email is sent; use the demo code shown above.</p>
+        <button id="verifyOtpButton" class="button primary" type="button">Verify and continue</button>
+      </section>
+      <p id="registerMessage" class="form-message" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="studentPanel" class="card" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">02 · ATTENDANCE</p>
+          <h2 id="studentName">Demo student</h2>
+          <p class="muted" id="studentMeta"></p>
+        </div>
+        <button id="signOutButton" class="button quiet small-button" type="button">End demo session</button>
+      </div>
+      <div class="class-list" id="studentClasses"></div>
+
+      <div class="section-heading session-heading">
+        <div>
+          <h3>Available demo sessions</h3>
+          <p class="muted">Check-in uses a synthetic location only. No GPS permission is requested.</p>
+        </div>
+        <button id="refreshSessionsButton" class="button quiet small-button" type="button">Refresh</button>
+      </div>
+      <div id="sessionsList" class="sessions-list">
+        <p class="muted">Loading sessions…</p>
+      </div>
+    </section>
+
+    <section id="receiptPanel" class="card receipt-card" hidden>
+      <div class="receipt-icon">✓</div>
+      <p class="eyebrow">ATTENDANCE RECEIPT</p>
+      <h2 id="receiptTitle">Attendance recorded</h2>
+      <p id="receiptMessage" class="muted"></p>
+      <dl id="receiptDetails" class="receipt-details"></dl>
+      <div class="sync-note">
+        <strong>BKP synchronisation</strong>
+        <span id="receiptSync">Pending in the demo outbox. No real spreadsheet is updated.</span>
+      </div>
+      <button id="backToSessionsButton" class="button secondary" type="button">Back to sessions</button>
+    </section>
+
+    <section class="card metrics-card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">03 · PROTOTYPE TELEMETRY</p>
+          <h2>Database counters</h2>
+          <p class="muted">Aggregate counts only. No student-level records are displayed here.</p>
+        </div>
+        <button id="refreshMetricsButton" class="button quiet small-button" type="button">Refresh</button>
+      </div>
+      <div class="metrics-grid">
+        <div><span>Demo students</span><strong id="metricStudents">—</strong></div>
+        <div><span>Enrolments</span><strong id="metricEnrolments">—</strong></div>
+        <div><span>Attendance rows</span><strong id="metricAttendance">—</strong></div>
+        <div><span>Pending BKP jobs</span><strong id="metricOutbox">—</strong></div>
+      </div>
+      <p id="metricsUpdated" class="hint">Counters have not been loaded yet.</p>
+    </section>
+
+    <footer>
+      <p>SMART ATTENDANCE KMS · Cloudflare POC · Build 0.1.0</p>
+      <p>Prototype only. Do not use for official attendance or real student information.</p>
+    </footer>
+  </main>
+</body>
+</html>
