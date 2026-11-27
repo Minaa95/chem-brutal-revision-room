@@ -56,7 +56,7 @@ async function testStudent(index) {
     throw new Error("The selected demo session is not assigned to " + matric + ".");
   }
 
-  const attendance = await timedRequest("/api/attendance/check-in", {
+  const checkInOptions = {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -68,11 +68,17 @@ async function testStudent(index) {
       lng: 0,
       accuracy: 10
     })
-  }, "check-in");
+  };
+  const attendance = await timedRequest("/api/attendance/check-in", checkInOptions, "check-in");
+  const duplicate = await timedRequest("/api/attendance/check-in", checkInOptions, "duplicate-check-in");
+  if (duplicate.status !== "ALREADY_RECORDED") {
+    throw new Error("Duplicate check-in was not idempotent for " + matric + ".");
+  }
 
   return {
     matric: me.student.matric,
-    status: attendance.status
+    status: attendance.status,
+    duplicateStatus: duplicate.status
   };
 }
 
